@@ -1,0 +1,7 @@
+version = "%%VERSION%%"
+description = "DNSCurve protocol for DNS queries over a secure channel"
+requires = "%%PACKAGES%%"
+archive(byte) = "dnscurve.cma"
+archive(byte, plugin) = "dnscurve.cma"
+archive(native) = "dnscurve.cmxa"
+exists_if = "dnscurve.cma"
