@@ -57,5 +57,5 @@ uninstall:
 	ocamlfind remove ${NAME}
 
 clean:
-	${MAKE} -C lib_test clean
 	rm -rf _build META $(addsuffix .${TESTT},${TESTS})
+	${MAKE} -C lib_test clean
