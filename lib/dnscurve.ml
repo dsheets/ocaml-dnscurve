@@ -6,16 +6,14 @@ module Crypto = Make(Serialize.Bigarray)
 module B = Bigarray
 module B1 = B.Array1
 
-let create_octets = Serialize.Bigarray.create
-
-let octets_into_string o off s soff len =
+let buf_into_string b off s soff len =
   for i=0 to len - 1 do
-    s.[i + soff] <- o.{i + off};
+    s.[i + soff] <- b.{i + off};
   done
 
-let string_into_octets s soff o off len =
+let string_into_buf s soff b off len =
   for i=0 to len - 1 do
-    o.{i + off} <- s.[i + soff];
+    b.{i + off} <- s.[i + soff];
   done
 
 exception Protocol_error of string
@@ -62,13 +60,13 @@ let new_half_nonce () =
   Crypto.random nonce_hlen
 
 let extend_nonce client_n =
-  let nonce = create_octets nonce_len in
+  let nonce = Dns.Buf.create nonce_len in
   B1.blit client_n (B1.sub nonce 0 nonce_hlen);
   B1.fill (B1.sub nonce nonce_hlen nonce_hlen) '\000';
   Crypto.box_read_nonce nonce
 
 let combine_nonce client_n server_n =
-  let nonce = create_octets nonce_len in
+  let nonce = Dns.Buf.create nonce_len in
   B1.blit client_n (B1.sub nonce 0 nonce_hlen);
   B1.blit server_n (B1.sub nonce nonce_hlen nonce_hlen);
   Crypto.box_read_nonce nonce
@@ -81,11 +79,11 @@ let encode_streamline_query ?keyring (pk,sk) server_pk dns =
   let client_n = new_half_nonce () in
   let nonce = extend_nonce client_n in
   let key = gen_key keyring sk server_pk in
-  let buf = Cstruct.create 4096 in (* TODO: ??? *)
-  let { Cstruct.buffer } = Dns.Packet.marshal buf dns in
+  let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
+  let buffer = Dns.Packet.marshal buf dns in
   let c = Crypto.(box_write_ciphertext (box_afternm key buffer ~nonce)) in
-  let txbuf = create_octets ((B1.dim c) + sq_hdr_sz) in
-  string_into_octets sq_magic 0 txbuf 0 sq_magic_len;
+  let txbuf = Dns.Buf.create ((B1.dim c) + sq_hdr_sz) in
+  string_into_buf sq_magic 0 txbuf 0 sq_magic_len;
   B1.blit (Crypto.box_write_key pk) (B1.sub txbuf sq_magic_len pk_sz);
   B1.blit client_n (B1.sub txbuf (sq_magic_len + pk_sz) nonce_hlen);
   B1.blit c (B1.sub txbuf sq_hdr_sz (B1.dim c));
@@ -101,8 +99,8 @@ let decode_streamline_query ?keyring sk buf =
   let nonce = extend_nonce client_n in
   let c = Crypto.box_read_ciphertext
     B1.(sub buf sq_hdr_sz (dim buf - sq_hdr_sz)) in
-  let raw = Cstruct.of_bigarray (Crypto.box_open_afternm key c ~nonce) in
-  { client_n; client_pk; key }, Dns.Packet.parse (Hashtbl.create 32) raw
+  { client_n; client_pk; key },
+  Dns.Packet.parse (Crypto.box_open_afternm key c ~nonce)
 
 let sr_magic = "R6fnvWJ8"
 let sr_magic_len = String.length sr_magic
@@ -110,11 +108,11 @@ let sr_hdr_sz = sr_magic_len + nonce_len
 let encode_streamline_response ({ client_n; key }) dns =
   let server_n = new_half_nonce () in
   let nonce = combine_nonce client_n server_n in
-  let buf = Cstruct.create 4096 in (* TODO: ??? *)
-  let { Cstruct.buffer } = Dns.Packet.marshal buf dns in
+  let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
+  let buffer = Dns.Packet.marshal buf dns in
   let c = Crypto.(box_write_ciphertext (box_afternm key buffer ~nonce)) in
-  let txbuf = create_octets ((B1.dim c) + sr_hdr_sz) in
-  string_into_octets sr_magic 0 txbuf 0 sr_magic_len;
+  let txbuf = Dns.Buf.create ((B1.dim c) + sr_hdr_sz) in
+  string_into_buf sr_magic 0 txbuf 0 sr_magic_len;
   B1.blit (Crypto.box_write_nonce nonce) (B1.sub txbuf sr_magic_len nonce_len);
   B1.blit c (B1.sub txbuf sr_hdr_sz (B1.dim c));
   txbuf
@@ -128,16 +126,15 @@ let decode_streamline_response ({ client_n; key }) buf =
   let nonce = Crypto.box_read_nonce (B1.sub buf sr_magic_len nonce_len) in
   let c = Crypto.box_read_ciphertext
     B1.(sub buf sr_hdr_sz (dim buf - sr_hdr_sz)) in
-  let raw = Cstruct.of_bigarray (Crypto.box_open_afternm key c ~nonce) in
-  Dns.Packet.parse (Hashtbl.create 32) raw
+  Dns.Packet.parse (Crypto.box_open_afternm key c ~nonce)
 
 let tq_key_magic = "x1a"
 let encode_txt_query ?keyring ~id (pk,sk) server_pk zone dns =
   let client_n = new_half_nonce () in
   let nonce = extend_nonce client_n in
   let key = gen_key keyring sk server_pk in
-  let buf = Cstruct.create 4096 in (* TODO: ??? *)
-  let { Cstruct.buffer } = Dns.Packet.marshal buf dns in
+  let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
+  let buffer = Dns.Packet.marshal buf dns in
   let c = Crypto.(box_write_ciphertext (box_afternm key buffer ~nonce)) in
   let c32 = Base32.of_octets c in
   let n32 = Base32.of_octets client_n in
@@ -174,7 +171,7 @@ let decode_txt_query ?keyring sk dns =
   | [] -> raise (Protocol_error "No questions")
   | _::_::_ -> raise (Protocol_error "Too many questions")
   | [{Dns.Packet.q_name}] ->
-    let buf = create_octets 4096 in (* TODO: ??? *)
+    let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
     let rec decode_name off = function
       | lbl::lbls when String.length lbl = 54 ->
         if (String.sub lbl 0 3) = tq_key_magic
@@ -192,30 +189,30 @@ let decode_txt_query ?keyring sk dns =
     let nonce = extend_nonce client_n in
     let c = Crypto.box_read_ciphertext
       (B1.sub buf nonce_hlen (written - nonce_hlen)) in
-    let raw = Cstruct.of_bigarray (Crypto.box_open_afternm key c ~nonce) in
-    { client_n; client_pk; key }, Dns.Packet.parse (Hashtbl.create 32) raw
+    { client_n; client_pk; key },
+    Dns.Packet.parse (Crypto.box_open_afternm key c ~nonce)
 
 let encode_txt_response ({ client_n; key }) query dns =
   let server_n = new_half_nonce () in
   let nonce = combine_nonce client_n server_n in
-  let buf = Cstruct.create 4096 in (* TODO: ??? *)
-  let { Cstruct.buffer } = Dns.Packet.marshal buf dns in
+  let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
+  let buffer = Dns.Packet.marshal buf dns in
   let c = Crypto.(box_write_ciphertext (box_afternm key buffer ~nonce)) in
   let clen = B1.dim c in
   let len = nonce_hlen + clen in
   let txt0 = String.create (min len 255) in
   let txts = ref [txt0] in
-  octets_into_string server_n 0 txt0 0 nonce_hlen;
+  buf_into_string server_n 0 txt0 0 nonce_hlen;
   if len < 256
-  then octets_into_string c 0 txt0 nonce_hlen clen
+  then buf_into_string c 0 txt0 nonce_hlen clen
   else begin
     let hdsz = 255 - nonce_hlen in
-    octets_into_string c 0 txt0 nonce_hlen hdsz;
+    buf_into_string c 0 txt0 nonce_hlen hdsz;
     let rec mktxts off buf =
       let sz = clen - off in
       let blksz = min sz 255 in
       let s = String.create blksz in
-      octets_into_string buf off s 0 blksz;
+      buf_into_string buf off s 0 blksz;
       txts := s :: !txts;
       if sz > 255 then mktxts (off + 255) buf
     in mktxts hdsz c
@@ -245,18 +242,18 @@ let decode_txt_response ({ client_n; key }) dns =
   let open Dns.Packet in
   match dns.answers with
   | [{rdata = TXT (txt0::txts)}] ->
-    let server_n = create_octets nonce_hlen in
-    string_into_octets txt0 0 server_n 0 nonce_hlen;
+    let server_n = Dns.Buf.create nonce_hlen in
+    string_into_buf txt0 0 server_n 0 nonce_hlen;
     let nonce = combine_nonce client_n server_n in
     let tlsz = List.fold_left (fun acc txt -> acc + String.length txt) 0 txts in
     let hdsz = String.length txt0 - nonce_len in
-    let c = create_octets (tlsz + hdsz) in
-    string_into_octets txt0 nonce_hlen c 0 hdsz;
+    let c = Dns.Buf.create (tlsz + hdsz) in
+    string_into_buf txt0 nonce_hlen c 0 hdsz;
     let _clen = List.fold_left (fun off txt ->
       let len = String.length txt in
-      string_into_octets txt 0 c off len;
+      string_into_buf txt 0 c off len;
       off + len
     ) hdsz txts in
     let r = Crypto.(box_open_afternm key (box_read_ciphertext c) ~nonce) in
-    Dns.Packet.parse (Hashtbl.create 32) (Cstruct.of_bigarray r)
+    Dns.Packet.parse r
   | _ -> raise (Protocol_error "TXT response should only have 1 TXT answer")

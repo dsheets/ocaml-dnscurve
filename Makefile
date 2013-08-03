@@ -2,7 +2,7 @@
 
 NAME=dnscurve
 VERSION=0.0.1
-PKGS=sodium,cstruct,dns
+PKGS=sodium,dns
 OBJS=base32
 TESTS=test
 TESTT=native
