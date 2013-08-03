@@ -101,7 +101,8 @@ let decode_streamline_query ?keyring sk buf =
   let nonce = extend_nonce client_n in
   let c = Crypto.box_read_ciphertext
     B1.(sub buf sq_hdr_sz (dim buf - sq_hdr_sz)) in
-  { client_n; client_pk; key }, Crypto.box_open_afternm key c ~nonce
+  let raw = Cstruct.of_bigarray (Crypto.box_open_afternm key c ~nonce) in
+  { client_n; client_pk; key }, Dns.Packet.parse (Hashtbl.create 32) raw
 
 let sr_magic = "R6fnvWJ8"
 let sr_magic_len = String.length sr_magic
@@ -127,7 +128,8 @@ let decode_streamline_response ({ client_n; key }) buf =
   let nonce = Crypto.box_read_nonce (B1.sub buf sr_magic_len nonce_len) in
   let c = Crypto.box_read_ciphertext
     B1.(sub buf sr_hdr_sz (dim buf - sr_hdr_sz)) in
-  Crypto.box_open_afternm key c ~nonce
+  let raw = Cstruct.of_bigarray (Crypto.box_open_afternm key c ~nonce) in
+  Dns.Packet.parse (Hashtbl.create 32) raw
 
 let tq_key_magic = "x1a"
 let encode_txt_query ?keyring ~id (pk,sk) server_pk zone dns =
@@ -190,7 +192,8 @@ let decode_txt_query ?keyring sk dns =
     let nonce = extend_nonce client_n in
     let c = Crypto.box_read_ciphertext
       (B1.sub buf nonce_hlen (written - nonce_hlen)) in
-    { client_n; client_pk; key }, Crypto.box_open_afternm key c ~nonce
+    let raw = Cstruct.of_bigarray (Crypto.box_open_afternm key c ~nonce) in
+    { client_n; client_pk; key }, Dns.Packet.parse (Hashtbl.create 32) raw
 
 let encode_txt_response ({ client_n; key }) query dns =
   let server_n = new_half_nonce () in
@@ -254,5 +257,6 @@ let decode_txt_response ({ client_n; key }) dns =
       string_into_octets txt 0 c off len;
       off + len
     ) hdsz txts in
-    Crypto.(box_open_afternm key (box_read_ciphertext c) ~nonce)
+    let r = Crypto.(box_open_afternm key (box_read_ciphertext c) ~nonce) in
+    Dns.Packet.parse (Hashtbl.create 32) (Cstruct.of_bigarray r)
   | _ -> raise (Protocol_error "TXT response should only have 1 TXT answer")

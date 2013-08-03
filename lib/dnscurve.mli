@@ -18,13 +18,13 @@ val encode_streamline_query :
 
 val decode_streamline_query :
   ?keyring:keyring -> Sodium.secret Sodium.Box.key ->
-  Sodium.Serialize.Bigarray.t -> channel * Sodium.Serialize.Bigarray.t
+  Sodium.Serialize.Bigarray.t -> channel * Dns.Packet.t
 
 val encode_streamline_response :
   channel -> Dns.Packet.t -> Sodium.Serialize.Bigarray.t
 
 val decode_streamline_response :
-  channel -> Sodium.Serialize.Bigarray.t -> Sodium.Serialize.Bigarray.t
+  channel -> Sodium.Serialize.Bigarray.t -> Dns.Packet.t
 
 val encode_txt_query :
   ?keyring:keyring -> id:int ->
@@ -35,10 +35,10 @@ val encode_txt_query :
 val decode_txt_query :
   ?keyring:keyring ->
   Sodium.secret Sodium.Box.key ->
-  Dns.Packet.t -> channel * Sodium.Serialize.Bigarray.t
+  Dns.Packet.t -> channel * Dns.Packet.t
 
 val encode_txt_response :
   channel -> Dns.Packet.t -> Dns.Packet.t -> Dns.Packet.t
 
 val decode_txt_response :
-  channel -> Dns.Packet.t -> Sodium.Serialize.Bigarray.t
+  channel -> Dns.Packet.t -> Dns.Packet.t
