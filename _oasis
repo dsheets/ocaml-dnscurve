@@ -1,0 +1,45 @@
+OASISFormat: 0.3
+Name:        dnscurve
+Version:     0.0.1
+Synopsis:    DNSCurve protocol for DNS queries over a secure channel
+Authors:     David Sheets
+License:     ISC
+Plugins:     META (0.3), DevFiles (0.3)
+BuildTools:  ocamlbuild
+
+Flag lwt
+  Description: build the Lwt library
+  Default: false
+
+Library dnscurve
+  Path: lib
+  Modules: Base32, Dnscurve
+  BuildDepends: sodium, dns
+  Findlibname: dnscurve
+  NativeOpt: -w @f@p@u
+  ByteOpt:   -w @f@p@u
+
+Library lwt
+  Path: lwt
+  Build$: flag(lwt)
+  Install$: flag(lwt)
+  Modules: Dnscurve_processor
+  BuildDepends: lwt, dns, dnscurve
+  Findlibname: lwt
+  FindlibParent: dnscurve
+  NativeOpt: -w @f@p@u
+  ByteOpt:   -w @f@p@u
+
+Executable test
+  Path:               lib_test
+  MainIs:             test.ml
+  Build$:             flag(tests)
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       dnscurve, oUnit
+
+Test lwt_server
+  Run$:               flag(tests)
+  Command:            $test
+  WorkingDirectory:   lib_test
