@@ -39,7 +39,7 @@ Executable test
   Install:            false
   BuildDepends:       dnscurve, oUnit
 
-Test lwt_server
+Test test
   Run$:               flag(tests)
   Command:            $test
   WorkingDirectory:   lib_test
