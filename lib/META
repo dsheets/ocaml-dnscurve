@@ -1,0 +1,22 @@
+# OASIS_START
+# DO NOT EDIT (digest: ec8a939b32c4fbcc9c88f7848ceaebcc)
+version = "0.0.1"
+description = "DNSCurve protocol for DNS queries over a secure channel"
+requires = "sodium dns"
+archive(byte) = "dnscurve.cma"
+archive(byte, plugin) = "dnscurve.cma"
+archive(native) = "dnscurve.cmxa"
+archive(native, plugin) = "dnscurve.cmxs"
+exists_if = "dnscurve.cma"
+package "lwt" (
+ version = "0.0.1"
+ description = "DNSCurve protocol for DNS queries over a secure channel"
+ requires = "lwt dns dnscurve"
+ archive(byte) = "lwt.cma"
+ archive(byte, plugin) = "lwt.cma"
+ archive(native) = "lwt.cmxa"
+ archive(native, plugin) = "lwt.cmxs"
+ exists_if = "lwt.cma"
+)
+# OASIS_STOP
+
