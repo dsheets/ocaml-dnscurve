@@ -19,7 +19,7 @@ module B = Bigarray
 
 type octets = (char, B.int8_unsigned_elt, B.c_layout) B.Array1.t
 
-exception Decode_error of int
+exception Decode_error of int * string
 
 let alpha = "0123456789bcdfghjklmnpqrstuvwxyz"
 
@@ -31,37 +31,39 @@ let inject =
   ) alpha;
   fun c -> let v = tbl.(Char.code c) in if v = -1 then raise Not_found else v
 
-let decode_length enclen =
-  let b = enclen * 5 in
-  b / 8 + (if b mod 8 <> 0 then 1 else 0)
-
+(* off is bits not bytes! returns new off *)
 let into_octets s off buf =
   let len = String.length s in
-  let olen = decode_length len in
-  let buf = B.Array1.sub buf off olen in
-  B.Array1.(fill buf '\000');
+  let blen = len * 5 in
+  let noff = off + 7 in
+  let loff = noff mod 8 in
+  let slen = (blen + loff) / 8 in
+  B.Array1.(fill (sub buf (noff / 8) slen) '\000');
+  let buf = B.Array1.sub buf (off / 8) (slen + 1 - loff / 7) in
+  let low = off mod 8 in
   for i=0 to len - 1 do
-    let boff = 5 * i in
+    let boff = 5 * i + low in
     let bshift = boff mod 8 in
     let off = boff / 8 in
     let btop = 8 - bshift in
-    let n = try inject s.[i] with Not_found -> raise (Decode_error i) in
+    let n = try inject s.[i]
+      with Not_found -> raise (Decode_error (i, s)) in
     buf.{off} <- Char.chr ((Char.code buf.{off})
                            lor ((n lsl bshift) land 0xff));
     if btop < 5 then buf.{off + 1} <- Char.chr (n lsr btop)
   done;
-  if olen > 0 && buf.{olen - 1} = '\000'
-  then olen - 1
-  else olen
+  off + blen
 
 let to_octets s =
-  let buf = B.(Array1.create char c_layout) (decode_length (String.length s)) in
-  let written = into_octets s 0 buf in
-  B.Array1.sub buf 0 written
+  let len = ((String.length s) * 5 + 7) / 8 in
+  let buf = B.(Array1.create char c_layout) len in
+  let _bwritten = into_octets s 0 buf in
+  B.Array1.sub buf 0
+    (if len > 0 && buf.{len - 1} = '\000' then len - 1 else len)
 
 let of_octets o =
   let len = B.Array1.dim o in
-  let blen = (let b = len * 8 in b / 5 + (if b mod 5 <> 0 then 1 else 0)) in
+  let blen = (len * 8 + 4) / 5 in
   let buf = String.create blen in
   for i=0 to blen - 1 do
     let boff = 5 * i in

@@ -2,7 +2,7 @@ type octets = (char,
                Bigarray.int8_unsigned_elt,
                Bigarray.c_layout) Bigarray.Array1.t
 
-exception Decode_error of int
+exception Decode_error of int * string
 
 val alpha : string
 

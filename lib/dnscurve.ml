@@ -75,7 +75,7 @@ let sq_magic = "Q6fnvWj8"
 let sq_magic_len = String.length sq_magic
 let pk_sz = Box.(bytes.public_key)
 let sq_hdr_sz = sq_magic_len + pk_sz + nonce_hlen
-let encode_streamline_query ?keyring (pk,sk) server_pk dns =
+let encode_streamlined_query ?keyring (pk,sk) server_pk dns =
   let client_n = new_half_nonce () in
   let nonce = extend_nonce client_n in
   let key = gen_key keyring sk server_pk in
@@ -89,8 +89,8 @@ let encode_streamline_query ?keyring (pk,sk) server_pk dns =
   B1.blit c (B1.sub txbuf sq_hdr_sz (B1.dim c));
   { client_n; client_pk = pk; key }, txbuf
 
-let decode_streamline_query ?keyring sk buf =
-  for i=0 to sq_magic_len do
+let decode_streamlined_query ?keyring sk buf =
+  for i=0 to sq_magic_len - 1 do
     if buf.{i} <> sq_magic.[i] then raise (Protocol_error "Bad magic")
   done;
   let client_pk = Crypto.box_read_public_key (B1.sub buf sq_magic_len pk_sz) in
@@ -105,7 +105,7 @@ let decode_streamline_query ?keyring sk buf =
 let sr_magic = "R6fnvWJ8"
 let sr_magic_len = String.length sr_magic
 let sr_hdr_sz = sr_magic_len + nonce_len
-let encode_streamline_response ({ client_n; key }) dns =
+let encode_streamlined_response ({ client_n; key }) dns =
   let server_n = new_half_nonce () in
   let nonce = combine_nonce client_n server_n in
   let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
@@ -117,8 +117,8 @@ let encode_streamline_response ({ client_n; key }) dns =
   B1.blit c (B1.sub txbuf sr_hdr_sz (B1.dim c));
   txbuf
 
-let decode_streamline_response ({ client_n; key }) buf =
-  for i=0 to sr_magic_len do
+let decode_streamlined_response ({ client_n; key }) buf =
+  for i=0 to sr_magic_len - 1 do
     if buf.{i} <> sr_magic.[i] then raise (Protocol_error "Bad magic")
   done;
   let buf_cn = B1.sub buf sr_magic_len nonce_hlen in
@@ -175,14 +175,15 @@ let decode_txt_query ?keyring sk dns =
     let rec decode_name off = function
       | lbl::lbls when String.length lbl = 54 ->
         if (String.sub lbl 0 3) = tq_key_magic
-        then off, Base32.to_octets (String.sub lbl 3 51)
+        then (off + 7) / 8, Base32.to_octets (String.sub lbl 3 51)
         else raise (Protocol_error "TXT query name bad public key magic")
       | lbl::lbls ->
-        let written = Base32.into_octets lbl off buf in
-        decode_name (off + written) lbls
+        let off = Base32.into_octets lbl off buf in
+        decode_name off lbls
       | [] -> raise (Protocol_error "TXT query name not encoded for DNSCurve")
     in
     let written, pk_octets = decode_name 0 q_name in
+    let written = written - (if buf.{written - 1} = '\000' then 1 else 0) in
     let client_pk = Crypto.box_read_public_key pk_octets in
     let key = gen_key keyring sk client_pk in
     let client_n = B1.sub buf 0 nonce_hlen in
