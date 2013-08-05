@@ -1,6 +1,6 @@
 module Dnscurve_protocol_only : sig
   type txn =
-    Streamline of Dnscurve.channel
+    Streamlined of Dnscurve.channel
   | Txt of Dnscurve.channel * Dns.Packet.t
   type 'a ctxt = 'a * Dns.Packet.t
   type context = txn ctxt
