@@ -75,12 +75,10 @@ let sq_magic = "Q6fnvWj8"
 let sq_magic_len = String.length sq_magic
 let pk_sz = Box.(bytes.public_key)
 let sq_hdr_sz = sq_magic_len + pk_sz + nonce_hlen
-let encode_streamlined_query ?keyring (pk,sk) server_pk dns =
+let encode_streamlined_query ?keyring (pk,sk) server_pk buffer =
   let client_n = new_half_nonce () in
   let nonce = extend_nonce client_n in
   let key = gen_key keyring sk server_pk in
-  let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
-  let buffer = Dns.Packet.marshal buf dns in
   let c = Crypto.(box_write_ciphertext (box_afternm key buffer ~nonce)) in
   let txbuf = Dns.Buf.create ((B1.dim c) + sq_hdr_sz) in
   string_into_buf sq_magic 0 txbuf 0 sq_magic_len;
@@ -95,21 +93,19 @@ let decode_streamlined_query ?keyring sk buf =
   done;
   let client_pk = Crypto.box_read_public_key (B1.sub buf sq_magic_len pk_sz) in
   let key = gen_key keyring sk client_pk in
-  let client_n = B1.sub buf (sq_magic_len + pk_sz) nonce_hlen in
+  let client_n = Dns.Buf.create nonce_hlen in
+  B1.blit (B1.sub buf (sq_magic_len + pk_sz) nonce_hlen) client_n;
   let nonce = extend_nonce client_n in
   let c = Crypto.box_read_ciphertext
     B1.(sub buf sq_hdr_sz (dim buf - sq_hdr_sz)) in
-  { client_n; client_pk; key },
-  Dns.Packet.parse (Crypto.box_open_afternm key c ~nonce)
+  { client_n; client_pk; key }, Crypto.box_open_afternm key c ~nonce
 
 let sr_magic = "R6fnvWJ8"
 let sr_magic_len = String.length sr_magic
 let sr_hdr_sz = sr_magic_len + nonce_len
-let encode_streamlined_response ({ client_n; key }) dns =
+let encode_streamlined_response ({ client_n; key }) buffer =
   let server_n = new_half_nonce () in
   let nonce = combine_nonce client_n server_n in
-  let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
-  let buffer = Dns.Packet.marshal buf dns in
   let c = Crypto.(box_write_ciphertext (box_afternm key buffer ~nonce)) in
   let txbuf = Dns.Buf.create ((B1.dim c) + sr_hdr_sz) in
   string_into_buf sr_magic 0 txbuf 0 sr_magic_len;
@@ -126,19 +122,18 @@ let decode_streamlined_response ({ client_n; key }) buf =
   let nonce = Crypto.box_read_nonce (B1.sub buf sr_magic_len nonce_len) in
   let c = Crypto.box_read_ciphertext
     B1.(sub buf sr_hdr_sz (dim buf - sr_hdr_sz)) in
-  Dns.Packet.parse (Crypto.box_open_afternm key c ~nonce)
+  Crypto.box_open_afternm key c ~nonce
 
 let tq_key_magic = "x1a"
-let encode_txt_query ?keyring ~id (pk,sk) server_pk zone dns =
+let encode_txt_query ?keyring ~id (pk,sk) server_pk zone buffer =
   let client_n = new_half_nonce () in
   let nonce = extend_nonce client_n in
   let key = gen_key keyring sk server_pk in
-  let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
-  let buffer = Dns.Packet.marshal buf dns in
   let c = Crypto.(box_write_ciphertext (box_afternm key buffer ~nonce)) in
-  let c32 = Base32.of_octets c in
-  let n32 = Base32.of_octets client_n in
-  let p32 = n32 ^ c32 in
+  let buf = Dns.Buf.create (nonce_hlen + (B1.dim c)) in
+  B1.blit client_n (B1.sub buf 0 nonce_hlen);
+  B1.blit c (B1.sub buf nonce_hlen (B1.dim c));
+  let p32 = Base32.of_octets buf in
   let len = String.length p32 in
   let p = ref [] in
   for i=0 to (len / 50) - 1 do
@@ -146,7 +141,8 @@ let encode_txt_query ?keyring ~id (pk,sk) server_pk zone dns =
   done;
   let over = len mod 50 in
   if over <> 0 then p := (String.sub p32 (len - over) over) :: !p;
-  let k32 = tq_key_magic ^ (Base32.of_octets (Crypto.box_write_key pk)) in
+  let k32 = Base32.of_octets (Crypto.box_write_key pk) in
+  let k32 = tq_key_magic ^ (String.sub k32 0 51) in
   let q_name = List.rev_append !p (k32::zone) in
   { client_n; client_pk = pk; key },
   Dns.Packet.({
@@ -190,14 +186,11 @@ let decode_txt_query ?keyring sk dns =
     let nonce = extend_nonce client_n in
     let c = Crypto.box_read_ciphertext
       (B1.sub buf nonce_hlen (written - nonce_hlen)) in
-    { client_n; client_pk; key },
-    Dns.Packet.parse (Crypto.box_open_afternm key c ~nonce)
+    { client_n; client_pk; key }, Crypto.box_open_afternm key c ~nonce
 
-let encode_txt_response ({ client_n; key }) query dns =
+let encode_txt_response ({ client_n; key }) query buffer =
   let server_n = new_half_nonce () in
   let nonce = combine_nonce client_n server_n in
-  let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
-  let buffer = Dns.Packet.marshal buf dns in
   let c = Crypto.(box_write_ciphertext (box_afternm key buffer ~nonce)) in
   let clen = B1.dim c in
   let len = nonce_hlen + clen in
@@ -239,7 +232,6 @@ let encode_txt_response ({ client_n; key }) query dns =
   })
 
 let decode_txt_response ({ client_n; key }) dns =
-  (* TODO: check id, check query name? *)
   let open Dns.Packet in
   match dns.answers with
   | [{rdata = TXT (txt0::txts)}] ->
@@ -247,7 +239,7 @@ let decode_txt_response ({ client_n; key }) dns =
     string_into_buf txt0 0 server_n 0 nonce_hlen;
     let nonce = combine_nonce client_n server_n in
     let tlsz = List.fold_left (fun acc txt -> acc + String.length txt) 0 txts in
-    let hdsz = String.length txt0 - nonce_len in
+    let hdsz = String.length txt0 - nonce_hlen in
     let c = Dns.Buf.create (tlsz + hdsz) in
     string_into_buf txt0 nonce_hlen c 0 hdsz;
     let _clen = List.fold_left (fun off txt ->
@@ -255,6 +247,5 @@ let decode_txt_response ({ client_n; key }) dns =
       string_into_buf txt 0 c off len;
       off + len
     ) hdsz txts in
-    let r = Crypto.(box_open_afternm key (box_read_ciphertext c) ~nonce) in
-    Dns.Packet.parse r
+    Crypto.(box_open_afternm key (box_read_ciphertext c) ~nonce)
   | _ -> raise (Protocol_error "TXT response should only have 1 TXT answer")
