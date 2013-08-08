@@ -13,8 +13,8 @@ Flag lwt
 
 Library dnscurve
   Path: lib
-  Modules: Base32, Dnscurve
-  BuildDepends: sodium, dns
+  Modules: Base32, Dnscurve, Dnscurve_resolver
+  BuildDepends: sodium, dns.lwt
   Findlibname: dnscurve
   NativeOpt: -w @f@p@u
   ByteOpt:   -w @f@p@u
