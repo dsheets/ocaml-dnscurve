@@ -1,8 +1,8 @@
 # OASIS_START
-# DO NOT EDIT (digest: ec8a939b32c4fbcc9c88f7848ceaebcc)
+# DO NOT EDIT (digest: 6b7cf7cf97654b4527eaf950e69f600f)
 version = "0.0.1"
 description = "DNSCurve protocol for DNS queries over a secure channel"
-requires = "sodium dns"
+requires = "sodium dns.lwt"
 archive(byte) = "dnscurve.cma"
 archive(byte, plugin) = "dnscurve.cma"
 archive(native) = "dnscurve.cmxa"
