@@ -1,3 +1,4 @@
+open Dns.Protocol
 open Dns_resolver
 open Dnscurve
 module Crypto = Sodium.Make(Sodium.Serialize.String)
@@ -7,9 +8,9 @@ type env = { mutable streamlined : bool option; mutable txt : bool option; }
 let new_env () = { streamlined = None; txt = None; }
 let reset_env env = env.streamlined <- None; env.txt <- None; ()
 
-let between inside outside keyf env server_pk zone =
-  let module O = (val outside : RESOLVER) in
-  let module I = (val inside : RESOLVER) in
+let between keyf env server_pk zone outside inside =
+  let module O = (val outside : CLIENT) in
+  let module I = (val inside : CLIENT) in
   let module M = struct
     type context =
     | Streamlined of env * I.context * channel
@@ -71,13 +72,13 @@ let between inside outside keyf env server_pk zone =
       | Txt (env,_,_,_) ->
         env.txt <- Some false; Dns_resolve_timeout
   end in
-  (module M : RESOLVER)
+  (module M : CLIENT)
 
-let fallback resolver keyf env server_pk zone =
-  let dnscurve = between resolver resolver keyf env server_pk zone in
-  let module D = (val resolver : RESOLVER) in
+let fallback keyf env server_pk zone resolver =
+  let dnscurve = between keyf env server_pk zone resolver resolver in
+  let module D = (val resolver : CLIENT) in
   let module M = struct
-    module C = (val dnscurve : RESOLVER)
+    module C = (val dnscurve : CLIENT)
     type context = Curve of C.context | Clear of D.context
 
     let get_id = C.get_id
@@ -97,4 +98,4 @@ let fallback resolver keyf env server_pk zone =
       | Curve c -> C.timeout c
       | Clear c -> D.timeout c
   end in
-  (module M : RESOLVER)
+  (module M : CLIENT)

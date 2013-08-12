@@ -43,6 +43,3 @@
 <lib_test/*.ml{,i}>: pkg_dns.lwt
 <lib_test/test.{native,byte}>: custom
 # OASIS_STOP
-<lib/*>: thread
-<lib_test/*>: thread
-<lwt/*>: thread
