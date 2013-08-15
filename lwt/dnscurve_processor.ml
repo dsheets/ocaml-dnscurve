@@ -2,9 +2,27 @@ open Dns
 open Dns_server
 open Dnscurve
 
-let between sk outside inside =
+module type DNSCURVEPROCESSOR = sig
+  include PROCESSOR
+
+  val process : channel -> context process
+end
+
+type 'a tunnel =
+  Sodium.secret Sodium.Box.key -> (module Protocol.SERVER) -> 'a ->
+  (module PROCESSOR)
+
+type _ wrap =
+| Plain : (module PROCESSOR) tunnel -> (module PROCESSOR) wrap
+| Curve : (module DNSCURVEPROCESSOR) tunnel -> (module DNSCURVEPROCESSOR) wrap
+
+let shrink (type a) : a wrap -> a tunnel = function
+  | Plain tun -> tun
+  | Curve tun -> tun
+
+let encurve sk outside inside =
   let module O = (val outside : Protocol.SERVER) in
-  let module I = (val inside : PROCESSOR) in
+  let module I = (val inside : DNSCURVEPROCESSOR) in
   let module M = struct
     type context =
     | Streamlined of I.context * channel
@@ -43,7 +61,8 @@ let between sk outside inside =
       | _exn -> None (* TODO: log *)
 
     let process ~src ~dst = function
-      | Streamlined (ctxt,_) | Txt (ctxt,_,_,_) -> I.process ~src ~dst ctxt
+      | Streamlined (ctxt,chan)
+      | Txt (ctxt,chan,_,_) -> I.process chan ~src ~dst ctxt
 
     let marshal buf ctxt pkt = match ctxt with
       | Streamlined (ictxt, chan) ->
@@ -62,9 +81,19 @@ let between sk outside inside =
   end in
   (module M : PROCESSOR)
 
-let fallback clear_processor sk outside encrypt_processor =
+let wrap sk outside inside =
+  let module I = (val inside : PROCESSOR) in
+  let module M = struct
+    include I
+
+    let process _chan = process
+  end in
+  encurve sk outside (module M : DNSCURVEPROCESSOR)
+
+let fallback (type a) (wrap : a wrap) clear_processor
+    sk outside (encrypt_processor : a) =
   let module D = (val clear_processor : PROCESSOR) in
-  let module P = (val between sk outside encrypt_processor : PROCESSOR) in
+  let module P = (val shrink wrap sk outside encrypt_processor : PROCESSOR) in
   let module M = struct
     type context = Curve of P.context | Clear of D.context
 
@@ -89,14 +118,26 @@ let fallback clear_processor sk outside encrypt_processor =
   end in
   (module M : PROCESSOR)
 
+let fallback_curve = fallback (Curve encurve)
+let fallback_dns = fallback (Plain wrap)
+
+let of_process process =
+  let module M = struct
+    include Protocol.Server
+
+    let process = process
+  end in
+  (module M : DNSCURVEPROCESSOR)
+
 let secure_of_process sk process =
   let dns = (module Protocol.Server : Protocol.SERVER) in
   let processor = (processor_of_process process :> (module PROCESSOR)) in
-  between sk dns processor
+  wrap sk dns processor
 
 let split_of_process sk clear_process encrypt_process =
   let dns = (module Protocol.Server : Protocol.SERVER) in
   fallback
+    (Plain wrap)
     (processor_of_process clear_process :> (module PROCESSOR))
     sk dns
     (processor_of_process encrypt_process :> (module PROCESSOR))
