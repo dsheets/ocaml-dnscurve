@@ -14,7 +14,7 @@ Flag lwt
 Library dnscurve
   Path: lib
   Modules: Base32, Dnscurve, Dnscurve_resolver
-  BuildDepends: sodium, dns.lwt
+  BuildDepends: sodium, dns
   Findlibname: dnscurve
   NativeOpt: -w @f@p@u
   ByteOpt:   -w @f@p@u
@@ -24,7 +24,7 @@ Library lwt
   Build$: flag(lwt)
   Install$: flag(lwt)
   Modules: Dnscurve_processor
-  BuildDepends: lwt, dns, dnscurve
+  BuildDepends: lwt, dns.lwt, dnscurve
   Findlibname: lwt
   FindlibParent: dnscurve
   NativeOpt: -w @f@p@u
