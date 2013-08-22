@@ -1,5 +1,6 @@
-# OASIS_START
-# DO NOT EDIT (digest: bc1e05bfc8b39b664f29dae8dbd3ebbb)
+
+LWT ?= $(shell if ocamlfind query lwt >/dev/null 2>&1; then echo --enable-lwt; fi)
+CONFIGUREFLAGS ?= $(LWT)
 
 SETUP = ocaml setup.ml
 
@@ -34,5 +35,3 @@ setup.data:
 	$(SETUP) -configure $(CONFIGUREFLAGS)
 
 .PHONY: build doc test all install uninstall reinstall clean distclean configure
-
-# OASIS_STOP
