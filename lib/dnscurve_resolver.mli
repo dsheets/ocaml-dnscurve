@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2013 David Sheets <sheets@alum.mit.edu>
+ * Copyright (c) 2013-2014 David Sheets <sheets@alum.mit.edu>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,7 +22,7 @@ type env = { mutable streamlined : bool option; mutable txt : bool option; }
 module type DNSCURVECLIENT = sig
   include Dns.Protocol.CLIENT
 
-  val marshal : Dnscurve.keyring option -> Sodium.Box.keypair -> Dns.Packet.t ->
+  val marshal : Dnscurve.keyring option -> Box.keypair -> Dns.Packet.t ->
     (context * Dns.Buf.t) list
 end
 

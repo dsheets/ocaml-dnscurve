@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2013 David Sheets <sheets@alum.mit.edu>
+ * Copyright (c) 2013-2014 David Sheets <sheets@alum.mit.edu>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,6 @@
 open Dns.Protocol
 open Dns_resolver
 open Dnscurve
-module Crypto = Sodium.Make(Sodium.Serialize.String)
 
 type env = { mutable streamlined : bool option; mutable txt : bool option; }
 
@@ -32,7 +31,7 @@ end
 let new_env () = { streamlined = None; txt = None; }
 let reset_env env = env.streamlined <- None; env.txt <- None; ()
 let get_id () =
-  let s = Crypto.random 2 in
+  let s = Sodium.Random.Bytes.generate 2 in
   ((int_of_char s.[0]) lsl 8) lor (int_of_char s.[1])
 
 let streamlined server_pk inside =
@@ -50,7 +49,7 @@ let streamlined server_pk inside =
           (ictxt, chan), buf)
         (I.marshal pkt)
 
-    let parse (ictxt, chan) buf =
+    let parse ((ictxt, chan) : context) buf =
       try I.parse ictxt (decode_streamlined_response chan buf)
       with exn ->
         Printf.eprintf "Exception: %s\nBacktrace:\n%!" (Printexc.to_string exn);

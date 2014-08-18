@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2013 David Sheets <sheets@alum.mit.edu>
+ * Copyright (c) 2013-2014 David Sheets <sheets@alum.mit.edu>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,7 +21,7 @@ exception Protocol_error of string
 
 type keyring = (public Box.key, channel Box.key) Hashtbl.t
 type channel = {
-  client_n : Serialize.Bigarray.t;
+  client_n : Box.Bigbytes.storage;
   client_pk : public Box.key;
   key : Sodium.channel Box.key;
 }
@@ -30,25 +30,25 @@ val get_key : string list -> public Box.key option
 
 val encode_streamlined_query :
   ?keyring:keyring ->
-  public Box.key * secret Box.key ->
+  Box.keypair ->
   public Box.key ->
-  Dns.Buf.t -> channel * Serialize.Bigarray.t
+  Dns.Buf.t -> channel * Box.Bigbytes.storage
 
 (** Raises { Protocol_error }, { Sodium.VerificationFailure } *)
 val decode_streamlined_query :
   ?keyring:keyring -> secret Box.key ->
-  Serialize.Bigarray.t -> channel * Dns.Buf.t
+  Box.Bigbytes.storage -> channel * Dns.Buf.t
 
 val encode_streamlined_response :
-  channel -> Dns.Buf.t -> Serialize.Bigarray.t
+  channel -> Dns.Buf.t -> Box.Bigbytes.storage
 
 (** Raises { Protocol_error }, { Sodium.VerificationFailure } *)
 val decode_streamlined_response :
-  channel -> Serialize.Bigarray.t -> Dns.Buf.t
+  channel -> Box.Bigbytes.storage -> Dns.Buf.t
 
 val encode_txt_query :
   ?keyring:keyring -> id:int ->
-  public Box.key * secret Box.key ->
+  Box.keypair ->
   public Box.key ->
   string list -> Dns.Buf.t -> channel * Dns.Packet.t
 
