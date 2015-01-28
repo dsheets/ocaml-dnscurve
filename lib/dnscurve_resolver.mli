@@ -22,7 +22,8 @@ type env = { mutable streamlined : bool option; mutable txt : bool option; }
 module type DNSCURVECLIENT = sig
   include Dns.Protocol.CLIENT
 
-  val marshal : Dnscurve.keyring option -> Box.keypair -> Dns.Packet.t ->
+  val marshal : Dnscurve.keyring option -> Box.keypair ->
+    ?alloc:(unit -> Dns.Buf.t) -> Dns.Packet.t ->
     (context * Dns.Buf.t) list
 end
 

@@ -24,7 +24,8 @@ type env = { mutable streamlined : bool option; mutable txt : bool option; }
 module type DNSCURVECLIENT = sig
   include CLIENT
 
-  val marshal : keyring option -> Sodium.Box.keypair -> Dns.Packet.t ->
+  val marshal : keyring option -> Sodium.Box.keypair ->
+    ?alloc:(unit -> Dns.Buf.t) -> Dns.Packet.t ->
     (context * Dns.Buf.t) list
 end
 
@@ -41,13 +42,13 @@ let streamlined server_pk inside =
 
     let get_id = get_id
 
-    let marshal keyring ident pkt =
+    let marshal keyring ident ?alloc pkt =
       List.rev_map
         (fun (ictxt, buf) ->
-          let chan, buf = encode_streamlined_query ?keyring ident
+          let chan, buf = encode_streamlined_query ?alloc ?keyring ident
             server_pk buf in
           (ictxt, chan), buf)
-        (I.marshal pkt)
+        (I.marshal ?alloc pkt)
 
     let parse ((ictxt, chan) : context) buf =
       try I.parse ictxt (decode_streamlined_response chan buf)
@@ -71,11 +72,11 @@ let between keyf env server_pk zone outside inside =
 
     let get_id = get_id
 
-    let marshal pkt =
+    let marshal ?alloc pkt =
       let keyring, ident = keyf () in
       let streamlined () =
         List.rev_map (fun (sctxt, buf) ->
-          Streamlined (env, sctxt), buf) (S.marshal keyring ident pkt)
+          Streamlined (env, sctxt), buf) (S.marshal keyring ident ?alloc pkt)
       in
       let txt () =
         let id = get_id () in
@@ -86,8 +87,8 @@ let between keyf env server_pk zone outside inside =
             List.fold_left
               (fun xs (octxt,buf) ->
                 (Txt (env, ictxt, chan, octxt), buf)::xs
-              ) xs (O.marshal pkt)
-          ) [] (I.marshal pkt)
+              ) xs (O.marshal ?alloc pkt)
+          ) [] (I.marshal ?alloc pkt)
       in
       match env with (* TODO: factor streamlined+txt in DNSCurve *)
       | { streamlined=None; txt=None }             -> (streamlined ())@(txt ())
@@ -130,11 +131,11 @@ let fallback keyf env server_pk zone resolver =
 
     let get_id = C.get_id
 
-    let marshal pkt =
-      List.(rev_append
-              (rev_map (fun (ctxt,buf) -> Clear ctxt, buf) (D.marshal pkt))
-              (rev_map (fun (ctxt,buf) -> Curve ctxt, buf) (C.marshal pkt))
-      )
+    let marshal ?alloc pkt = List.(
+      rev_append
+        (rev_map (fun (ctxt,buf) -> Clear ctxt, buf) (D.marshal ?alloc pkt))
+        (rev_map (fun (ctxt,buf) -> Curve ctxt, buf) (C.marshal ?alloc pkt))
+    )
 
     let parse ctxt buf = try begin match ctxt with
       | Curve c -> C.parse c buf

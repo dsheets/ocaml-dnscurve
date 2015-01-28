@@ -29,6 +29,7 @@ type channel = {
 val get_key : string list -> public Box.key option
 
 val encode_streamlined_query :
+  ?alloc:(unit -> Dns.Buf.t) ->
   ?keyring:keyring ->
   Box.keypair ->
   public Box.key ->
@@ -40,7 +41,7 @@ val decode_streamlined_query :
   Box.Bigbytes.storage -> channel * Dns.Buf.t
 
 val encode_streamlined_response :
-  channel -> Dns.Buf.t -> Box.Bigbytes.storage
+  ?alloc:(unit -> Dns.Buf.t) -> channel -> Dns.Buf.t -> Box.Bigbytes.storage
 
 (** Raises { Protocol_error }, { Sodium.VerificationFailure } *)
 val decode_streamlined_response :

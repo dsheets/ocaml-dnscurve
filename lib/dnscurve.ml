@@ -21,6 +21,8 @@ open Sodium
 module B = Bigarray
 module B1 = B.Array1
 
+let create_buf = B1.create B.char B.c_layout
+
 let buf_into_string b off s soff len =
   for i=0 to len - 1 do
     s.[i + soff] <- b.{i + off};
@@ -75,13 +77,13 @@ let new_half_nonce () =
   Random.Bigbytes.generate nonce_hlen
 
 let extend_nonce client_n =
-  let nonce = Dns.Buf.create nonce_len in
+  let nonce = create_buf nonce_len in
   B1.blit client_n (B1.sub nonce 0 nonce_hlen);
   B1.fill (B1.sub nonce nonce_hlen nonce_hlen) '\000';
   Box.Bigbytes.to_nonce nonce
 
 let combine_nonce client_n server_n =
-  let nonce = Dns.Buf.create nonce_len in
+  let nonce = create_buf nonce_len in
   B1.blit client_n (B1.sub nonce 0 nonce_hlen);
   B1.blit server_n (B1.sub nonce nonce_hlen nonce_hlen);
   Box.Bigbytes.to_nonce nonce
@@ -90,12 +92,12 @@ let sq_magic = "Q6fnvWj8"
 let sq_magic_len = String.length sq_magic
 let pk_sz = Box.public_key_size
 let sq_hdr_sz = sq_magic_len + pk_sz + nonce_hlen
-let encode_streamlined_query ?keyring (sk,pk) server_pk buffer =
+let encode_streamlined_query ?alloc ?keyring (sk,pk) server_pk buffer =
   let client_n = new_half_nonce () in
   let nonce = extend_nonce client_n in
   let key = gen_key keyring sk server_pk in
   let c = Box.Bigbytes.(fast_box key buffer nonce) in
-  let txbuf = Dns.Buf.create ((B1.dim c) + sq_hdr_sz) in
+  let txbuf = Dns.Buf.create ?alloc ((B1.dim c) + sq_hdr_sz) in
   string_into_buf sq_magic 0 txbuf 0 sq_magic_len;
   B1.blit (Box.Bigbytes.of_public_key pk) (B1.sub txbuf sq_magic_len pk_sz);
   B1.blit client_n (B1.sub txbuf (sq_magic_len + pk_sz) nonce_hlen);
@@ -108,7 +110,7 @@ let decode_streamlined_query ?keyring sk buf =
   done;
   let client_pk = Box.Bigbytes.to_public_key (B1.sub buf sq_magic_len pk_sz) in
   let key = gen_key keyring sk client_pk in
-  let client_n = Dns.Buf.create nonce_hlen in
+  let client_n = create_buf nonce_hlen in
   B1.blit (B1.sub buf (sq_magic_len + pk_sz) nonce_hlen) client_n;
   let nonce = extend_nonce client_n in
   let c = B1.(sub buf sq_hdr_sz (dim buf - sq_hdr_sz)) in
@@ -117,11 +119,11 @@ let decode_streamlined_query ?keyring sk buf =
 let sr_magic = "R6fnvWJ8"
 let sr_magic_len = String.length sr_magic
 let sr_hdr_sz = sr_magic_len + nonce_len
-let encode_streamlined_response ({ client_n; key }) buffer =
+let encode_streamlined_response ?alloc ({ client_n; key }) buffer =
   let server_n = new_half_nonce () in
   let nonce = combine_nonce client_n server_n in
   let c = Box.Bigbytes.fast_box key buffer nonce in
-  let txbuf = Dns.Buf.create ((B1.dim c) + sr_hdr_sz) in
+  let txbuf = Dns.Buf.create ?alloc ((B1.dim c) + sr_hdr_sz) in
   string_into_buf sr_magic 0 txbuf 0 sr_magic_len;
   B1.blit (Box.Bigbytes.of_nonce nonce) (B1.sub txbuf sr_magic_len nonce_len);
   B1.blit c (B1.sub txbuf sr_hdr_sz (B1.dim c));
@@ -143,7 +145,7 @@ let encode_txt_query ?keyring ~id (sk,pk) server_pk zone buffer =
   let nonce = extend_nonce client_n in
   let key = gen_key keyring sk server_pk in
   let c = Box.Bigbytes.fast_box key buffer nonce in
-  let buf = Dns.Buf.create (nonce_hlen + (B1.dim c)) in
+  let buf = create_buf (nonce_hlen + (B1.dim c)) in
   B1.blit client_n (B1.sub buf 0 nonce_hlen);
   B1.blit c (B1.sub buf nonce_hlen (B1.dim c));
   let p32 = Base32.of_octets buf in
@@ -169,7 +171,7 @@ let encode_txt_query ?keyring ~id (sk,pk) server_pk zone buffer =
       ra = false;
       rcode = NoError;
     };
-    questions = [{ q_name; q_type = Q_TXT; q_class = Q_IN }];
+    questions = [{ q_name; q_type = Q_TXT; q_class = Q_IN; q_unicast = QM }];
     answers = []; authorities = []; additionals = [];
   })
 
@@ -180,7 +182,7 @@ let decode_txt_query ?keyring sk dns =
   | [] -> raise (Protocol_error "No questions")
   | _::_::_ -> raise (Protocol_error "Too many questions")
   | [{Dns.Packet.q_name}] ->
-    let buf = Dns.Buf.create 4096 in (* TODO: ??? *)
+    let buf = create_buf 4096 in (* TODO: ??? *)
     let rec decode_name off = function
       | lbl::lbls when String.length lbl = 54 ->
         if (String.sub lbl 0 3) = tq_key_magic
@@ -239,6 +241,7 @@ let encode_txt_response ({ client_n; key }) query buffer =
                  cls = RR_IN;
                  ttl = 0_l;
                  rdata = TXT (List.rev !txts);
+                 flush = false;
                }];
     authorities = []; additionals = [];
   })
@@ -247,12 +250,12 @@ let decode_txt_response ({ client_n; key }) dns =
   let open Dns.Packet in
   match dns.answers with
   | [{rdata = TXT (txt0::txts)}] ->
-    let server_n = Dns.Buf.create nonce_hlen in
+    let server_n = create_buf nonce_hlen in
     string_into_buf txt0 0 server_n 0 nonce_hlen;
     let nonce = combine_nonce client_n server_n in
     let tlsz = List.fold_left (fun acc txt -> acc + String.length txt) 0 txts in
     let hdsz = String.length txt0 - nonce_hlen in
-    let c = Dns.Buf.create (tlsz + hdsz) in
+    let c = create_buf (tlsz + hdsz) in
     string_into_buf txt0 nonce_hlen c 0 hdsz;
     let _clen = List.fold_left (fun off txt ->
       let len = String.length txt in
