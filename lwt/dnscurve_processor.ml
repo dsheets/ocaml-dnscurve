@@ -81,16 +81,20 @@ let encurve sk outside inside =
       | Streamlined (ctxt,chan)
       | Txt (ctxt,chan,_,_) -> I.process chan ~src ~dst ctxt
 
+    (* TODO: This needs to accept an allocator to be Mirage-compatible. *)
     let marshal buf ctxt pkt = match ctxt with
       | Streamlined (ictxt, chan) ->
         begin match I.marshal buf ictxt pkt with
-        | Some buf -> Some (encode_streamlined_response chan buf)
+        | Some buf ->
+          (* TODO: pass allocator here *)
+          Some (encode_streamlined_response chan buf)
         | None -> None (* TODO: log *)
         end
       | Txt (ictxt, chan, txt, octxt) ->
         begin match I.marshal buf ictxt pkt with
         | Some buf ->
           let pkt = encode_txt_response chan txt buf in
+          (* TODO: pass allocator here *)
           let obuf = Dns.Buf.create 4096 in
           O.marshal obuf octxt pkt
         | None -> None (* TODO: log *)
