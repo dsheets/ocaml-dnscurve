@@ -1,3 +1,7 @@
+0.3.0 (2015-01-28):
+* Update for dns >= 0.12.0
+* `encode_streamlined_query` and `encode_streamlined_response` now take allocators
+
 0.2.0 (2014-08-18):
 * Update to use new sodium 0.2.0 interface
 
