@@ -64,7 +64,7 @@ let to_octets s =
 let of_octets o =
   let len = B.Array1.dim o in
   let blen = (len * 8 + 4) / 5 in
-  let buf = String.create blen in
+  let buf = Bytes.create blen in
   for i=0 to blen - 1 do
     let boff = 5 * i in
     let bshift = boff mod 8 in
@@ -72,8 +72,8 @@ let of_octets o =
     let bot = ((Char.code o.{off}) lsr bshift) land 0x1f in
     let btop = 8 - bshift in
     if btop < 5 && off < len - 1
-    then buf.[i] <- alpha.[ (((Char.code o.{off + 1}) land (0x1f lsr btop))
-                             lsl btop) + bot ]
-    else buf.[i] <- alpha.[bot];
+    then Bytes.set buf i alpha.[ (((Char.code o.{off + 1}) land (0x1f lsr btop))
+                                  lsl btop) + bot ]
+    else Bytes.set buf i alpha.[bot];
   done;
   buf

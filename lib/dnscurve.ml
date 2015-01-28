@@ -25,7 +25,7 @@ let create_buf = B1.create B.char B.c_layout
 
 let buf_into_string b off s soff len =
   for i=0 to len - 1 do
-    s.[i + soff] <- b.{i + off};
+    Bytes.set s (i + soff) b.{i + off};
   done
 
 let string_into_buf s soff b off len =
@@ -208,7 +208,7 @@ let encode_txt_response ({ client_n; key }) query buffer =
   let c = Box.Bigbytes.fast_box key buffer nonce in
   let clen = B1.dim c in
   let len = nonce_hlen + clen in
-  let txt0 = String.create (min len 255) in
+  let txt0 = Bytes.create (min len 255) in
   let txts = ref [txt0] in
   buf_into_string server_n 0 txt0 0 nonce_hlen;
   if len < 256
@@ -219,7 +219,7 @@ let encode_txt_response ({ client_n; key }) query buffer =
     let rec mktxts off buf =
       let sz = clen - off in
       let blksz = min sz 255 in
-      let s = String.create blksz in
+      let s = Bytes.create blksz in
       buf_into_string buf off s 0 blksz;
       txts := s :: !txts;
       if sz > 255 then mktxts (off + 255) buf
